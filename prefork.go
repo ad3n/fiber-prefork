@@ -35,16 +35,16 @@ func IsChild() bool {
 	return os.Getenv(preforkKey) == preforkVal
 }
 
+func TotalChild() int {
+	return len(childs)
+}
+
 func (p prefork) StartTLS(address string, tlsConfig *tls.Config) error {
 	return p.fork(address, tlsConfig)
 }
 
 func (p prefork) Start(address string) error {
 	return p.fork(address, nil)
-}
-
-func (p prefork) TotalChild() int {
-	return len(childs)
 }
 
 func (p prefork) fork(address string, tlsConfig *tls.Config) error {
