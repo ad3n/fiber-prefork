@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/libp2p/go-reuseport"
 )
 
@@ -22,6 +23,7 @@ const (
 
 type prefork struct {
 	engine *fiber.App
+	childs map[int]*exec.Cmd
 }
 
 func New(engine *fiber.App) *prefork {
@@ -33,14 +35,18 @@ func IsChild() bool {
 }
 
 func (p prefork) StartTLS(address string, tlsConfig *tls.Config) error {
-	return fork(p.engine, address, tlsConfig)
+	return p.fork(address, tlsConfig)
 }
 
 func (p prefork) Start(address string) error {
-	return fork(p.engine, address, nil)
+	return p.fork(address, nil)
 }
 
-func fork(engine *fiber.App, address string, tlsConfig *tls.Config) error {
+func (p prefork) TotalChild() int {
+	return len(p.childs)
+}
+
+func (p prefork) fork(address string, tlsConfig *tls.Config) error {
 	var ln net.Listener
 	var err error
 
@@ -58,7 +64,7 @@ func fork(engine *fiber.App, address string, tlsConfig *tls.Config) error {
 
 		go watchMaster()
 
-		return engine.Listener(ln, fiber.ListenConfig{
+		return p.engine.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		})
 	}
@@ -69,13 +75,13 @@ func fork(engine *fiber.App, address string, tlsConfig *tls.Config) error {
 	}
 
 	maxProcs := runtime.GOMAXPROCS(0)
-	childs := make(map[int]*exec.Cmd)
 	channel := make(chan child, maxProcs)
 
 	defer func() {
-		for _, proc := range childs {
+		for _, proc := range p.childs {
 			if err = proc.Process.Kill(); err != nil {
 				if !errors.Is(err, os.ErrProcessDone) {
+					log.Errorf("prefork: failed to kill child: %v", err)
 				}
 			}
 		}
@@ -99,7 +105,7 @@ func fork(engine *fiber.App, address string, tlsConfig *tls.Config) error {
 		}
 
 		pid := cmd.Process.Pid
-		childs[pid] = cmd
+		p.childs[pid] = cmd
 		pids = append(pids, pid)
 
 		go func() {
