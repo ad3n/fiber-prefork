@@ -21,9 +21,10 @@ const (
 	preforkVal = "1"
 )
 
+var childs = make(map[int]*exec.Cmd)
+
 type prefork struct {
 	engine *fiber.App
-	childs map[int]*exec.Cmd
 }
 
 func New(engine *fiber.App) *prefork {
@@ -43,7 +44,7 @@ func (p prefork) Start(address string) error {
 }
 
 func (p prefork) TotalChild() int {
-	return len(p.childs)
+	return len(childs)
 }
 
 func (p prefork) fork(address string, tlsConfig *tls.Config) error {
@@ -78,7 +79,7 @@ func (p prefork) fork(address string, tlsConfig *tls.Config) error {
 	channel := make(chan child, maxProcs)
 
 	defer func() {
-		for _, proc := range p.childs {
+		for _, proc := range childs {
 			if err = proc.Process.Kill(); err != nil {
 				if !errors.Is(err, os.ErrProcessDone) {
 					log.Errorf("prefork: failed to kill child: %v", err)
@@ -105,7 +106,7 @@ func (p prefork) fork(address string, tlsConfig *tls.Config) error {
 		}
 
 		pid := cmd.Process.Pid
-		p.childs[pid] = cmd
+		childs[pid] = cmd
 		pids = append(pids, pid)
 
 		go func() {
